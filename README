@@ -7,6 +7,9 @@ NekoBox provides a graphical interface for managing proxy configurations with
 support for multiple protocols including SOCKS, HTTP(S), Shadowsocks, Trojan,
 VMess, VLESS, TUIC, Hysteria, WireGuard, and more.
 
+Also NekoBox provides a sing-box compatible tool for managing proxy 
+configurations with command line
+
 Upstream: https://github.com/qr243vbi/nekobox
 
 Installing
