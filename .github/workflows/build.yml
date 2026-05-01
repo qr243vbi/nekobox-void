@@ -41,11 +41,13 @@ jobs:
       matrix:
         include:
           # Native builds (same arch for host and target)
-          - { host: x86_64, target: x86_64 }
-          - { host: x86_64-musl, target: x86_64-musl }
+          - { host: x86_64, target: x86_64, machine: ubuntu-latest }
+          - { host: x86_64-musl, target: x86_64-musl, machine: ubuntu-latest }
+          - { host: aarch64, target: x86_64, machine: ubuntu-latest-arm }
+          - { host: aarch64-musl, target: x86_64-musl, machine: ubuntu-latest-arm }
           # Note: aarch64 cross-compilation disabled - Qt6 qmlimportscanner
           # cannot run on x86_64 host (binary arch mismatch)
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.machine }}
 
     steps:
       # Free up disk space for the build
