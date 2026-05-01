@@ -16,7 +16,7 @@ revision=1
 wrksrc="nekobox-unified-source-${version}"
 build_style=cmake
 # Configure CMake with Ninja generator and release build type. By default, BUILD_GO_PARTS and SKIP_UPDATER is ON.
-configure_args="-GNinja -DBUILD_GO_PARTS=ON -DCMAKE_BUILD_TYPE=Release -DSKIP_UPDATER=ON"
+configure_args="-GNinja -DCMAKE_BUILD_TYPE=Release -DLMDB_EXISTS=ON"
 hostmakedepends="cmake ninja pkg-config qt6-base qt6-tools"
 makedepends="qt6-base-devel qt6-declarative-devel thrift-devel openssl-devel boost-devel lmdb-devel acl-devel libunistring-devel libcurl-devel libzstd-devel go thrift"
 depends="qt6-base qt6-wayland hicolor-icon-theme desktop-file-utils noto-fonts-emoji noto-fonts-ttf"
