@@ -41,13 +41,22 @@ jobs:
       matrix:
         include:
           # Native builds (same arch for host and target)
-          - { host: x86_64, target: x86_64 }
-          - { host: x86_64-musl, target: x86_64-musl }
-          # Note: aarch64 cross-compilation disabled - Qt6 qmlimportscanner
-          # cannot run on x86_64 host (binary arch mismatch)
-    runs-on: ubuntu-22.04
+          - { runner: ubuntu-24.04-arm, target: aarch64, variant: musl, guest: arm64 }
+          - { runner: ubuntu-24.04-arm, target: aarch64, variant: glibc, guest: arm64 }
+          - { runner: ubuntu-24.04-arm, target: armv7l, variant: musl, guest: 'arm/v7' }
+          - { runner: ubuntu-24.04-arm, target: armv7l, variant: glibc, guest: 'arm/v7' }
+          - { runner: ubuntu-24.04-arm, target: armv6l, variant: musl, guest: 'arm/v6' }
+          - { runner: ubuntu-24.04-arm, target: armv6l, variant: glibc, guest: 'arm/v6' }
+          - { runner: ubuntu-24.04, target: x86_64, variant: musl, guest: amd64 }
+          - { runner: ubuntu-24.04, target: x86_64, variant: glibc, guest: amd64 }
+          - { runner: ubuntu-24.04, target: i686, variant: glibc, guest: "386" }
+    runs-on: ${{ matrix.runner }}
 
     steps:
+     # Checkout this repository (nekobox-void)
+      - name: Checkout nekobox-void
+        uses: actions/checkout@v6
+
       # Free up disk space for the build
       # NekoBox builds require significant space for Go modules and Qt
       - name: Free disk space
@@ -68,94 +77,38 @@ jobs:
           sudo docker image prune --all --force
           df -h
 
-      # Checkout this repository (nekobox-void)
-      - name: Checkout nekobox-void
-        uses: actions/checkout@v4
-        with:
-          path: nekobox-void
-
-      # Checkout the official void-packages repository
-      - name: Checkout void-packages
-        uses: actions/checkout@v4
-        with:
-          repository: void-linux/void-packages
-          ref: master
-          path: void-packages
-
-      # Copy our package template into void-packages
-      - name: Copy nekobox into srcpkgs
-        run: |
-          echo "=== Copying nekobox package template ==="
-          cp -rv nekobox-void/srcpkgs/nekobox void-packages/srcpkgs/
-          ls -la void-packages/srcpkgs/nekobox/
-
-      # Register libthrift.so in shlibs (missing from upstream void-packages)
-      - name: Register libthrift shlib mapping
-        run: |
-          echo "=== Adding libthrift.so to common/shlibs ==="
-          # The thrift package in void-packages doesn't register its shlib
-          # We add it here so xbps-src can resolve the runtime dependency
-          echo "libthrift.so.0.22.0 thrift-0.22.0_1" >> void-packages/common/shlibs
-          echo "Added libthrift shlib mapping"
-          tail -5 void-packages/common/shlibs
-
-      # Download and prepare xbps-static tools
-      - name: Prepare xbps-static
-        run: |
-          echo "=== Setting up xbps-static build tools ==="
-          mkdir -p /opt/xbps
-          curl -LO http://repo-default.voidlinux.org/static/xbps-static-latest.x86_64-musl.tar.xz
-          tar xvf xbps-static-latest.x86_64-musl.tar.xz -C /opt/xbps
-          rm xbps-static-latest.x86_64-musl.tar.xz
-          echo "xbps tools installed:"
-          ls /opt/xbps/usr/bin/
-
-      # Build the package for the target architecture
-      - name: Build NekoBox package
-        env:
-          XBPS_TARGET_ARCH: ${{ matrix.target }}
-        run: |
-          echo "=== Building nekobox for ${{ matrix.target }} ==="
-          export PATH="/opt/xbps/usr/bin/:$PATH"
-          cd void-packages
-
-          if [[ "${{ matrix.host }}" == "${{ matrix.target }}" ]]; then
-            # Native build (same host and target)
-            echo "Native build: host=${{ matrix.host }}, target=${{ matrix.target }}"
-            ./xbps-src -A ${{ matrix.host }} binary-bootstrap
-            ./xbps-src pkg -j$(nproc) -A ${{ matrix.host }} nekobox
-          else
-            # Cross-compilation build
-            echo "Cross build: host=${{ matrix.host }}, target=${{ matrix.target }}"
-            ./xbps-src -a ${{ matrix.target }} -A ${{ matrix.host }} binary-bootstrap
-            ./xbps-src pkg -j$(nproc) -a ${{ matrix.target }} -A ${{ matrix.host }} nekobox
-          fi
-
-          echo "=== Build completed ==="
-          ls -la hostdir/binpkgs/
-
       # Sign the packages with GPG for authenticity
       - name: Sign packages
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
+          PRIVATE_KEY: ${{ secrets.PRIV_KEY }}
           XBPS_PASSPHRASE: ${{ secrets.SIGN_PASS }}
-          XBPS_TARGET_ARCH: ${{ matrix.target }}
-        working-directory: void-packages/hostdir/binpkgs/
         run: |
-          echo "=== Signing packages ==="
-          export PATH="/opt/xbps/usr/bin/:$PATH"
+          declare -p XBPS_PASSPHRASE    >> srcpkgs/.ENV
+          declare -p PRIVATE_KEY        >> srcpkgs/.ENV
 
-          # Only sign if secrets are available
-          if [ -n "${{ secrets.PRIV_KEY }}" ]; then
-            xbps-rindex -r $PWD
-            xbps-rindex -s --signedby "nekobox-void <noreply@github.com>" \
-              --privkey <(printf '%s' "${{ secrets.PRIV_KEY }}") $PWD
-            xbps-rindex -S --privkey <(printf '%s' "${{ secrets.PRIV_KEY }}") *.xbps
-            xbps-rindex -c $PWD
-            echo "Packages signed successfully"
-          else
-            echo "Signing skipped - no private key configured"
+      # Build the package for the target architecture
+      - name: Build NekoBox package
+        env:
+          TARGET: ${{ matrix.target }}
+          GUEST_ARCH: ${{ matrix.guest }}
+          GUEST_VARIANT: ${{ matrix.variant }}
+        run: |
+          XBPS_TARGET_ARCH="${TARGET}"
+
+          if [[ "${GUEST_VARIANT}" == "musl" ]]
+          then
+            XBPS_TARGET_ARCH="${XBPS_TARGET_ARCH}-musl"
           fi
+
+          export GUEST_UID="$UID"
+          export GUEST_VARIANT
+          export GUEST_ARCH
+          declare -p XBPS_TARGET_ARCH   >> srcpkgs/.ENV
+          chmod -Rfv 777 srcpkgs
+          sudo -E docker compose up
+          sudo mv srcpkgs/packages void-packages
+          sudo chown `whoami`:`whoami` -Rfv void-packages
 
       # Generate checksums for integrity verification
       - name: Generate checksums
@@ -171,7 +124,7 @@ jobs:
 
       # Upload build artifacts
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nekobox-${{ matrix.target }}
           path: void-packages/hostdir/binpkgs/*.xbps
@@ -181,7 +134,7 @@ jobs:
   release:
     needs: build
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 

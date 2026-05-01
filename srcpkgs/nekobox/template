@@ -5,33 +5,30 @@
 # Build Notes:
 # - This package builds NekoBox from the unified source tarball which includes
 #   the sing-box core (Go) and the Qt frontend (C++)
-# - The Go core is built first with CGO disabled for portability
+# - The Go core is built with Cmake using go and thrift compilers
 # - The Qt frontend is built with CMake using system Qt6 libraries
 # - Thrift is used for RPC communication between the frontend and core
 #
 pkgname=nekobox
-version=5.10.40
+version=5.11.2
 revision=1
 # The unified source tarball extracts to nekobox-unified-source-VERSION
 wrksrc="nekobox-unified-source-${version}"
 build_style=cmake
-# Configure CMake with Ninja generator and release build type
-configure_args="-GNinja -DCMAKE_BUILD_TYPE=Release -DSKIP_UPDATE_BUTTON=ON"
+# Configure CMake with Ninja generator and release build type. By default, BUILD_GO_PARTS and SKIP_UPDATER is ON.
+configure_args="-GNinja -DCMAKE_BUILD_TYPE=Release"
 hostmakedepends="cmake ninja pkg-config qt6-base qt6-tools go thrift"
-makedepends="qt6-base-devel qt6-declarative-devel thrift-devel openssl-devel boost-devel"
-depends="qt6-base qt6-wayland hicolor-icon-theme desktop-file-utils"
+makedepends="qt6-base-devel qt6-declarative-devel thrift-devel openssl-devel boost-devel lmdb-devel acl-devel libunistring-devel libcurl-devel libzstd-devel patchelf"
+depends="qt6-base qt6-wayland hicolor-icon-theme desktop-file-utils noto-fonts-emoji noto-fonts-ttf nekobox-core"
 short_desc="Cross-platform Qt proxy utility powered by sing-box"
 maintainer="NekoBox Void Contributors <noreply@github.com>"
 license="GPL-3.0-or-later"
 homepage="https://github.com/qr243vbi/nekobox"
 distfiles="https://github.com/qr243vbi/nekobox/releases/download/${version}/${pkgname}-unified-source-${version}.tar.xz"
-checksum=ff962a36f2b5fa795ba015d2bc229d5df144489ab5e4b2b7c0b227426eef801b
-
-# Go build tags for sing-box core features
-_go_build_tags="with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_dhcp,with_tailscale,with_shadowtls"
+checksum=cab34abc6a868229702f2849608581f1999c56ddad1b985cfbebf6ddbc591a9a
 
 # Disable 32-bit builds - not well tested upstream
-lib32disabled=yes
+# lib32disabled=yes
 
 # Build options - customize display backends
 build_options="wayland"
@@ -39,79 +36,11 @@ build_options_default="wayland"
 
 desc_option_wayland="Enable Wayland support"
 
-pre_configure() {
-	local _srcdir
-
-	# Get the absolute source directory path
-	_srcdir="${PWD}"
-
-	# Build the Go sing-box core first
-	msg_normal "Building sing-box core...\n"
-
-	# Navigate to the Go core directory
-	cd "${_srcdir}/core/server/sing-box"
-
-	# Set Go environment - disable CGO for portability
-	export CGO_ENABLED=0
-	export GOFLAGS="-mod=mod"
-
-	# Build sing-box core binary
-	go build -v -trimpath \
-		-tags "${_go_build_tags}" \
-		-ldflags "-s -w -X 'github.com/sagernet/sing-box/constant.Version=${version}'" \
-		-o "${_srcdir}/nekobox_core" \
-		./cmd/sing-box
-
-	cd "${_srcdir}"
-
-	msg_normal "sing-box core built successfully\n"
-}
-
 do_install() {
 	# Install the main nekobox Qt application
 	# CMake installs to DESTDIR by default
 	cd "${wrksrc}/build"
-	DESTDIR="${DESTDIR}" ninja install
-
-	cd "${wrksrc}"
-
-	# Install the sing-box core binary
-	vbin nekobox_core
-
-	# Install desktop file
-	vinstall "${FILESDIR}/nekobox.desktop" 644 usr/share/applications
-
-	# Install icons - check various possible locations in the source tree
-	local _icon_installed=false
-
-	# Try to find and install icons from res directory
-	for size in 16 32 48 64 128 256; do
-		for icon_path in \
-			"res/icon/nekobox_${size}.png" \
-			"res/icons/${size}x${size}/nekobox.png" \
-			"res/nekobox_${size}.png"; do
-			if [ -f "${icon_path}" ]; then
-				vinstall "${icon_path}" 644 \
-					"usr/share/icons/hicolor/${size}x${size}/apps" nekobox.png
-				_icon_installed=true
-				break
-			fi
-		done
-	done
-
-	# If no sized icons found, try the main icon
-	if [ "${_icon_installed}" = "false" ]; then
-		for icon_path in \
-			"res/icon/nekobox.png" \
-			"res/nekobox.png" \
-			"res/icon.png"; do
-			if [ -f "${icon_path}" ]; then
-				vinstall "${icon_path}" 644 \
-					"usr/share/icons/hicolor/256x256/apps" nekobox.png
-				break
-			fi
-		done
-	fi
+	DESTDIR="${DESTDIR}" cmake --install .
 
 	# Install license documentation
 	if [ -f "LICENSE" ]; then
@@ -119,4 +48,12 @@ do_install() {
 	elif [ -f "COPYING" ]; then
 		vlicense COPYING
 	fi
+}
+
+nekobox-core_package() {
+    short_desc+=" - core file"
+    pkg_install() {
+        vmove usr/bin/sing-box
+        vmove usr/libexec/Iblis/nekobox_core
+    }
 }
