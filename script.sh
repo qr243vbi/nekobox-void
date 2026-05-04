@@ -10,7 +10,7 @@ ln -s nekobox srcpkgs/packages/srcpkgs/nekobox-core
 
 ln -s srcpkgs/nekobox srcpkgs/packages/srcpkgs/nekobox-core
 cd srcpkgs/packages
-echo "libthrift.so.0.22.0 thrift-0.22.0_1" >> common/shlibs
+echo "libthrift.so.0.23.0 thrift-0.23.0_1" >> common/shlibs
 tail -5 common/shlibs
 
 # If local source exists
