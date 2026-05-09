@@ -1,0 +1,3 @@
+srcpkgs/packages
+*.tar.xz
+srcpkgs/.ENV
