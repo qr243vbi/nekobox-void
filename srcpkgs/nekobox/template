@@ -10,7 +10,7 @@
 # - Thrift is used for RPC communication between the frontend and core
 #
 pkgname=nekobox
-version=5.11.13
+version=5.11.14
 revision=1
 # The unified source tarball extracts to nekobox-unified-source-VERSION
 wrksrc="nekobox-unified-source-${version}"
